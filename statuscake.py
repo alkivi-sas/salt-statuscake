@@ -21,6 +21,7 @@ Module for sending value to statuscake
 # Import Python libs
 from __future__ import absolute_import
 import logging
+import json
 
 # Import 3rd-party libs
 # pylint: disable=import-error,no-name-in-module,redefined-builtin
@@ -34,67 +35,33 @@ log = logging.getLogger(__name__)
 
 __virtualname__ = 'statuscake'
 
-CACHET_PARAMS_DEFINITION = {
-    'components': {
-        'add': {
-            'name': {'mandatory': True },
-            'status': {'mandatory': True },
-            'description': {'mandatory': False, 'default': None },
-            'link': {'mandatory': False, 'default': None },
-            'order': {'mandatory': False, 'default': 0 },
-            'group_id': {'mandatory': False, 'default': None },
-            'enabled': {'mandatory': False, 'default': True },
-        },
-        'update': {
-            'name': {'mandatory': False },
-            'status': {'mandatory': False },
-            'link': {'mandatory': False, 'default': None },
-            'order': {'mandatory': False, 'default': None },
-            'group_id': {'mandatory': False, 'default': None },
-        },
-    },
-    'components.groups': {
-        'add': {
-            'name': {'mandatory': True },
-            'order': {'mandatory': False, 'default': 0 },
-        },
-        'update': {
-            'name': {'mandatory': False },
-            'order': {'mandatory': False },
-        },
-    },
-    'incidents': {
-        'add': {
-            'name': {'mandatory': True },
-            'message': {'mandatory': True },
-            'status': {'mandatory': True },
-            'visible': {'mandatory': True, 'default': 1 },
-            'component_id': {'mandatory': False, 'default': None },
-            'component_status': {'mandatory': False, 'default': None },
-            'notify': {'mandatory': False, 'default': False },
-        },
-        'update': {
-            'name': {'mandatory': False },
-            'message': {'mandatory': False },
-            'status': {'mandatory': False },
-            'visible': {'mandatory': False, 'default': 1 },
-            'component_id': {'mandatory': False },
-            'notify': {'mandatory': False },
-        },
-    },
-    'metrics': {
-        'add': {
-            'name': {'mandatory': True },
-            'suffix': {'mandatory': True },
-            'description': {'mandatory': True },
-            'default_value': {'mandatory': True, 'default': 0 },
-            'display_chart': {'mandatory': False, 'default': 1 },
-        },
-    },
-    'metrics.points': {
-        'add': {
-            'value': {'mandatory': True },
-        },
+STATUSCAKE_PARAMS_DEFINITION = {
+    'test': {
+        'TestID': {'mandatory': False },
+        'Paused': {'mandatory': False },
+        'WebsiteName': {'mandatory': True },
+        'WebsiteURL': {'mandatory': True },
+        'Port': {'mandatory': False },
+        'NodeLocations': {'mandatory': False },
+        'Timeout': {'mandatory': False },
+        'PingURL': {'mandatory': False },
+        'Confirmation': {'mandatory': False },
+        'CheckRate': {'mandatory': True, 'default': 300 },
+        'BasicUser': {'mandatory': False },
+        'BasicPass': {'mandatory': False },
+        'Public': {'mandatory': False },
+        'LogoImage': {'mandatory': False },
+        'Branding': {'mandatory': False },
+        'WebsiteHost': {'mandatory': False },
+        'Virus': {'mandatory': False },
+        'FindString': {'mandatory': False },
+        'DoNotFind': {'mandatory': False },
+        'TestType': {'mandatory': True, 'default': 'HTTP' },
+        'ContactGroup': {'mandatory': False },
+        'RealBrowser': {'mandatory': False },
+        'TriggerRate': {'mandatory': False },
+        'TestTags': {'mandatory': False },
+        'StatusCodes': {'mandatory': False },
     },
 }
 
@@ -107,20 +74,17 @@ def __virtual__():
     '''
     return __virtualname__
 
-def _build_args(obj, method, **kwargs):
+def _build_args(obj, **kwargs):
     '''
     Helpers to build parameters
-    According to CACHET_PARAMS_DEFINITION return formated args
+    According to STATUSCAKE_PARAMS_DEFINITION return formated args
     '''
 
-    if obj not in CACHET_PARAMS_DEFINITION:
-        raise Exception('%s not in CACHET_PARAMS_DEFINITION' % obj)
-
-    if method not in CACHET_PARAMS_DEFINITION[obj]:
-        raise Exception('%s not in CACHET_PARAMS_DEFINITION[%s]' % (method, obj))
+    if obj not in STATUSCAKE_PARAMS_DEFINITION:
+        raise Exception('%s not in STATUSCAKE_PARAMS_DEFINITION' % obj)
 
     args = {}
-    for k, config in CACHET_PARAMS_DEFINITION[obj][method].items():
+    for k, config in STATUSCAKE_PARAMS_DEFINITION[obj].items():
         if config['mandatory']:
             if k not in kwargs:
                 if 'default' in config:
@@ -248,11 +212,10 @@ def get_locations():
 
         salt '*' statuscake.get_locations
     '''
-    ret = {'message': '',
-           'res': True}
+    ret = {'message': '', 'res': True}
 
     url = 'https://www.statuscake.com/API/Locations/json'
-    result = salt.utils.http.query(url,'GET',decode=True,status=True)
+    result = salt.utils.http.query(url,'GET', decode=True, status=True)
     if result.get('status', None) == salt.ext.six.moves.http_client.OK:
         _result = result['dict']
         ret['message'] = _result.values()
@@ -260,3 +223,101 @@ def get_locations():
         ret['res'] = False
 
     return  ret
+
+
+def _check_api_key(api_key):
+    if not api_key:
+        api_key = __salt__['config.get']('statuscake.api_key') or \
+            __salt__['config.get']('statuscake:api_key')
+
+        if not api_key:
+            return {'res': False, 'message': 'No Statuscake api_key found'}
+
+    return { 'res': True, 'data': api_key }
+
+def _check_api_username(username):
+    if not username:
+        username = __salt__['config.get']('statuscake.username') or \
+            __salt__['config.get']('statuscake:username')
+
+        if not username:
+            return {'res': False, 'message': 'No Statuscake username found'}
+
+    return { 'res': True, 'data': username }
+
+def add_test(name, url, check_rate=60, test_type='HTTP', api_key=None, api_username=None, **kwargs):
+    '''
+    Add a statuscake test
+
+    :param name: WebsiteName. MANDATORY
+    :param url: WebsiteURL. MANDATORY
+    :param check_rate: CheckRate. MANDATORY default to 60
+    :param test_type: TestType. MANDATORY default to HTTP
+    :param api_key: Statuscacke API key.
+    :param api_username: Statuscake API username.
+
+    :return: dictionnary with res = True or False and message or error.
+    '''
+
+    ret = {'message': '', 'res': True}
+    test = _check_api_key(api_key)
+    if not test['res']:
+        return test
+    api_key = test['data']
+
+    test = _check_api_username(api_username)
+    if not test['res']:
+        return test
+    api_username = test['data']
+
+
+    header_dict = {}
+    header_dict['API'] = api_key
+    header_dict['Username'] = api_username
+    header_dict['Content-Type'] = 'application/x-www-form-urlencoded'
+
+    if not kwargs:
+        kwargs = {}
+
+    kwargs['WebsiteName'] = name
+    kwargs['WebsiteURL'] = url
+    kwargs['CheckRate'] = check_rate
+    kwargs['test_type'] = test_type
+
+    test = _build_args('test', **kwargs)
+    if not test['res']:
+        return test
+    params = test['data']
+
+    url = 'https://www.statuscake.com/API/Tests/Update'
+    method = 'PUT'
+
+    result = salt.utils.http.query(
+        url,
+        method,
+        data=_urlencode(params),
+        decode=True,
+        status=True,
+        header_dict=header_dict,
+        opts=__opts__,
+    )
+
+    if result.get('status', None) == salt.ext.six.moves.http_client.OK:
+        _result = result['dict']
+        if not _result['Success']:
+            ret['res'] = False
+            ret['message'] = _result['Message']
+            ret['details'] = _result['Issues']
+        else:
+            ret['message'] = _result['Message']
+            ret['id'] = _result['InsertID']
+            ret['data'] = _result['Data']
+    elif result.get('status', None) == salt.ext.six.moves.http_client.NO_CONTENT:
+        return True
+    else:
+        logger.warning('WTF ?')
+        logger.warning(url)
+        logger.warning(method)
+        logger.warning(params)
+        ret['res'] = False
+    return ret
