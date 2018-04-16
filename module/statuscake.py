@@ -63,6 +63,15 @@ STATUSCAKE_PARAMS_DEFINITION = {
         'TestTags': {'mandatory': False },
         'StatusCodes': {'mandatory': False },
     },
+    'ssl': {
+        'domain': {'mandatory': True },
+        'checkrate': {'mandatory': True, 'default': 3600 },
+        'contact_groups': {'mandatory': True, 'default': ''},
+        'alert_at': {'mandatory': True, 'default': '1,7,30'},
+        'alert_expiry': {'mandatory': True, 'default': True},
+        'alert_reminder': {'mandatory': True, 'default': True},
+        'alert_broken': {'mandatory': True, 'default': True},
+    },
 }
 
 
@@ -268,8 +277,8 @@ def add_test(WebsiteName, WebsiteURL, CheckRate=60, TestType='HTTP', api_key=Non
     url = 'https://www.statuscake.com/API/Tests/Update'
     method = 'PUT'
 
-    return _query(url=url, 
-            method=method, username=api_username, 
+    return _query(url=url,
+            method=method, username=api_username,
             api_key=api_key, auth=True, args=params)
 
 def get_all_tests(api_key=None, api_username=None):
@@ -285,8 +294,8 @@ def get_all_tests(api_key=None, api_username=None):
     url = 'https://www.statuscake.com/API/Tests/'
     method = 'GET'
 
-    return _query(url=url, 
-            method=method, username=api_username, 
+    return _query(url=url,
+            method=method, username=api_username,
             api_key=api_key, auth=True)
 
 def get_test(id, api_key=None, api_username=None):
@@ -302,8 +311,8 @@ def get_test(id, api_key=None, api_username=None):
     url = 'https://www.statuscake.com/API/Tests/Details?TestID={0}'.format(id)
     method = 'GET'
 
-    return _query(url=url, 
-            method=method, username=api_username, 
+    return _query(url=url,
+            method=method, username=api_username,
             api_key=api_key, auth=True)
 
 def search_test(name, api_key=None, api_username=None):
@@ -362,6 +371,146 @@ def delete_test(id, api_key=None, api_username=None):
     url = 'https://www.statuscake.com/API/Tests/Details/?TestID={0}'.format(id)
     method = 'DELETE'
 
-    return _query(url=url, 
-            method=method, username=api_username, 
+    return _query(url=url,
+            method=method, username=api_username,
+            api_key=api_key, auth=True)
+
+
+def get_all_ssls(api_key=None, api_username=None):
+    '''
+    Fetch all ssl tests minimum data
+    Usefull for searching
+
+    :param api_key: Statuscacke API key.
+    :param api_username: Statuscake API username.
+
+    :return: dictionnary with res = True or False and data or error.
+    '''
+    url = 'https://app.statuscake.com/API/SSL/'
+    method = 'GET'
+
+    return _query(url=url,
+            method=method, username=api_username,
+            api_key=api_key, auth=True)
+
+
+def add_ssl(domain, checkrate=3600, contact_groups=None,
+            alert_at='1,7,30', alert_expiry=True, alert_reminder=True, alert_broken=True,
+            api_key=None, api_username=None, **kwargs):
+    '''
+    Add a statuscake SSL test
+
+    :param domain: URL to check, has to start with https://. MANDATORY
+    :param checkrate: Checkrate in seconds. Accepted: [300, 600, 1800, 3600, 86400, 2073600]. MANDATORY
+    :param contact_groups: Contactgroup IDs, separated by a comma. Can be an empy string. MANDATORY
+    :param alert_at: When you wish to receive reminders. Must be exactly 3 numeric values seperated by commas. MANDATORY
+    :param alert_expiry: Set to true to enable expiration alerts. False to disable. MANDATORY
+    :param alert_reminder: Set to true to enable reminder alerts. False to disable. Also see alert_at. MANDATORY
+    :param alert_broken: Set to true to enable broken alerts. False to disable. MANDATORY
+    :param api_key: Statuscacke API key.
+    :param api_username: Statuscake API username.
+
+    :return: dictionnary with res = True or False and message or error.
+    '''
+
+    if not kwargs:
+        kwargs = {}
+
+    kwargs['domain'] = domain
+    kwargs['checkrate'] = checkrate
+    kwargs['contact_groups'] = contact_groups
+    kwargs['alert_at'] = alert_at
+    kwargs['alert_expiry'] = alert_expiry
+    kwargs['alert_reminder'] = alert_reminder
+    kwargs['alert_broken'] = alert_broken
+
+    test = build_args('ssl', **kwargs)
+    if not test['res']:
+        return test
+    params = test['data']
+
+    url = 'https://app.statuscake.com/API/SSL/Update'
+    method = 'PUT'
+
+    return _query(url=url,
+            method=method, username=api_username,
+            api_key=api_key, auth=True, args=params)
+
+
+def delete_ssl(id, api_key=None, api_username=None):
+    '''
+    Delete a statuscake SSL
+
+    :param id: TestID. MANDATORY
+    :param api_key: Statuscacke API key.
+    :param api_username: Statuscake API username.
+
+    :return: dictionnary with res = True or False and message or error.
+    '''
+
+    url = 'https://app.statuscake.com/API/SSL/Update?id='.format(id)
+    method = 'DELETE'
+
+    return _query(url=url,
+            method=method, username=api_username,
+            api_key=api_key, auth=True)
+
+
+def search_ssl(url, api_key=None, api_username=None):
+    '''
+    Search for a ssl test with url.
+
+    :param url: domain. MANDATORY
+    :param api_key: Statuscacke API key.
+    :param api_username: Statuscake API username.
+
+    :return: dictionnary with res = True or False and id or error.
+    '''
+
+    ret = {'message': '', 'res': True}
+    if not url:
+        ret['res'] = False
+        ret['message'] = 'You have to provide at least name or url parameters'
+        return ret
+
+    test = get_all_ssls(api_key, api_username)
+    if not test['res']:
+        return test
+
+    data = test['data']
+    result = None
+
+    for test in data:
+        if test['domain'] != url:
+            continue
+        if result:
+            ret['res'] = False
+            ret['message'] = 'We have multiple ssl domains with this url : {0}'.format(url)
+        else:
+            result = test
+
+    if not result:
+        ret['res'] = False
+        ret['message'] = 'No ssl test found with this url : {0}'.format(url)
+        return ret
+
+    ret['id'] = result['id']
+    return ret
+
+
+def get_ssl(id, api_key=None, api_username=None):
+    '''
+    Fetch specific test data
+
+    :param id: TestID. MANDATORY
+    :param api_key: Statuscacke API key.
+    :param api_username: Statuscake API username.
+
+    :return: dictionnary with res = True or False and data or error.
+    '''
+    url = 'https://app.statuscake.com/API/SSL/?id={0}'.format(id)
+    method = 'GET'
+
+    return _query(url=url,
+            method=method, username=api_username,
             api_key=api_key, auth=True)
