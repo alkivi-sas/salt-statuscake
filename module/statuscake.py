@@ -154,9 +154,6 @@ def _handle_generic_result(result):
     elif result.get('status', None) == salt.ext.six.moves.http_client.NO_CONTENT:
         return True
     else:
-        log.debug(url)
-        log.debug(query_params)
-        log.debug(data)
         log.debug(result)
         ret['res'] = False
     return ret
